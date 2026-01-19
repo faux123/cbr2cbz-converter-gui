@@ -1,0 +1,12 @@
+to compile this code
+
+fork and/or download the source, then run below in a terminal
+
+mcs -pkg:gtk-sharp-3.0 -out:cbr2cbz.exe CbrToCbzConverter.cs
+
+once comilation is completed, run below in a terminal
+
+mono cbr2cbz.exe
+
+if running Linux below are the dependencies
+mono gtk-sharp-3 unarchiver zip
