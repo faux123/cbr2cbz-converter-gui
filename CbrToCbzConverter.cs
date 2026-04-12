@@ -6,11 +6,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using Gtk;
 
+/// <summary>
+/// Main window and application controller for the CBR to CBZ batch converter.
+/// Provides a GTK3 UI with drag-and-drop, an Add Files dialog, parallel conversion,
+/// per-file status tracking, and graceful cancellation support.
+/// </summary>
 public class CbrToCbzConverter : Window
 {
     private Label statusLabel;
     private CheckButton deleteOriginalCheckbox;
     private Button startButton;
+    private Button cancelButton;
     private Button deleteOriginalsButton;
     private TextView logTextView;
     private TextBuffer logBuffer;
@@ -18,8 +24,10 @@ public class CbrToCbzConverter : Window
     private ListStore fileListStore;
     private List<string> queuedFiles;
     private List<string> successfulConversions;
+    private Dictionary<string, TreeIter> _iterMap;
     private int maxThreads;
     private object logLock = new object();
+    private CancellationTokenSource _cts;
 
     public CbrToCbzConverter() : base("CBR to CBZ Converter")
     {
@@ -29,6 +37,8 @@ public class CbrToCbzConverter : Window
 
         queuedFiles = new List<string>();
         successfulConversions = new List<string>();
+        _iterMap = new Dictionary<string, TreeIter>();
+        _cts = new CancellationTokenSource();
         maxThreads = Environment.ProcessorCount;
 
         // Create main vertical box
@@ -48,7 +58,7 @@ public class CbrToCbzConverter : Window
         // Drop zone frame
         Frame dropFrame = new Frame("Drop CBR Files Here");
         EventBox dropZone = new EventBox();
-        
+
         Label dropLabel = new Label("Drag and drop .cbr files here");
         dropLabel.MarginTop = 40;
         dropLabel.MarginBottom = 40;
@@ -56,17 +66,17 @@ public class CbrToCbzConverter : Window
         dropLabel.MarginEnd = 20;
         dropZone.Add(dropLabel);
         dropFrame.Add(dropZone);
-        
+
         // Setup drag and drop
-        Gtk.Drag.DestSet(dropZone, DestDefaults.All, 
+        Gtk.Drag.DestSet(dropZone, DestDefaults.All,
             new TargetEntry[] {
                 new TargetEntry("text/uri-list", 0, 0),
                 new TargetEntry("text/plain", 0, 1)
-            }, 
+            },
             Gdk.DragAction.Copy);
-        
+
         dropZone.DragDataReceived += OnDragDataReceived;
-        
+
         vbox.PackStart(dropFrame, false, false, 5);
 
         // File list with scrolled window
@@ -74,41 +84,57 @@ public class CbrToCbzConverter : Window
         ScrolledWindow fileScrolledWindow = new ScrolledWindow();
         fileScrolledWindow.SetPolicy(PolicyType.Automatic, PolicyType.Automatic);
         fileScrolledWindow.SetSizeRequest(-1, 150);
-        
-        // Create tree view with columns
-        fileListStore = new ListStore(typeof(string), typeof(string));
+
+        // Create tree view with three columns: Filename, Full Path, Status
+        fileListStore = new ListStore(typeof(string), typeof(string), typeof(string));
         fileTreeView = new TreeView(fileListStore);
-        
+
         TreeViewColumn fileColumn = new TreeViewColumn();
         fileColumn.Title = "Filename";
         CellRendererText fileCell = new CellRendererText();
         fileColumn.PackStart(fileCell, true);
         fileColumn.AddAttribute(fileCell, "text", 0);
         fileTreeView.AppendColumn(fileColumn);
-        
+
         TreeViewColumn pathColumn = new TreeViewColumn();
         pathColumn.Title = "Full Path";
         CellRendererText pathCell = new CellRendererText();
         pathColumn.PackStart(pathCell, true);
         pathColumn.AddAttribute(pathCell, "text", 1);
         fileTreeView.AppendColumn(pathColumn);
-        
+
+        TreeViewColumn statusColumn = new TreeViewColumn();
+        statusColumn.Title = "Status";
+        CellRendererText statusCell = new CellRendererText();
+        statusColumn.PackStart(statusCell, true);
+        statusColumn.AddAttribute(statusCell, "text", 2);
+        fileTreeView.AppendColumn(statusColumn);
+
         fileScrolledWindow.Add(fileTreeView);
         fileListFrame.Add(fileScrolledWindow);
         vbox.PackStart(fileListFrame, true, true, 5);
 
         // Button box
         HBox buttonBox = new HBox(false, 10);
-        
+
         startButton = new Button("Start Conversion");
         startButton.Sensitive = false;
         startButton.Clicked += OnStartConversion;
         buttonBox.PackStart(startButton, true, true, 0);
-        
+
+        Button addFilesButton = new Button("Add Files\u2026");
+        addFilesButton.Clicked += OnAddFiles;
+        buttonBox.PackStart(addFilesButton, true, true, 0);
+
         Button clearButton = new Button("Clear Queue");
         clearButton.Clicked += OnClearQueue;
         buttonBox.PackStart(clearButton, true, true, 0);
-        
+
+        cancelButton = new Button("Cancel");
+        cancelButton.Clicked += OnCancel;
+        cancelButton.NoShowAll = true;
+        buttonBox.PackStart(cancelButton, true, true, 0);
+
         vbox.PackStart(buttonBox, false, false, 5);
 
         // Delete original checkbox
@@ -131,20 +157,23 @@ public class CbrToCbzConverter : Window
         ScrolledWindow scrolledWindow = new ScrolledWindow();
         scrolledWindow.SetPolicy(PolicyType.Automatic, PolicyType.Automatic);
         scrolledWindow.SetSizeRequest(-1, 200);
-        
+
         logTextView = new TextView();
         logTextView.Editable = false;
         logTextView.WrapMode = WrapMode.Word;
         logBuffer = logTextView.Buffer;
         scrolledWindow.Add(logTextView);
         logFrame.Add(scrolledWindow);
-        
+
         vbox.PackStart(logFrame, true, true, 5);
 
         Add(vbox);
         ShowAll();
     }
 
+    /// <summary>
+    /// Handles drag-and-drop file events, parsing URIs and adding valid CBR files to the queue.
+    /// </summary>
     private void OnDragDataReceived(object o, DragDataReceivedArgs args)
     {
         string data = System.Text.Encoding.UTF8.GetString(args.SelectionData.Data);
@@ -164,13 +193,14 @@ public class CbrToCbzConverter : Window
             // URL decode
             cleanUri = Uri.UnescapeDataString(cleanUri);
 
-            if (File.Exists(cleanUri) && cleanUri.ToLower().EndsWith(".cbr"))
+            if (File.Exists(cleanUri) && cleanUri.EndsWith(".cbr", StringComparison.OrdinalIgnoreCase))
             {
                 if (!queuedFiles.Contains(cleanUri))
                 {
                     queuedFiles.Add(cleanUri);
                     string filename = System.IO.Path.GetFileName(cleanUri);
-                    fileListStore.AppendValues(filename, cleanUri);
+                    TreeIter iter = fileListStore.AppendValues(filename, cleanUri, "Queued");
+                    _iterMap[cleanUri] = iter;
                     addedCount++;
                 }
             }
@@ -186,52 +216,144 @@ public class CbrToCbzConverter : Window
         Gtk.Drag.Finish(args.Context, true, false, args.Time);
     }
 
+    /// <summary>
+    /// Clears the file queue, resets the list store and iter map, and disables the Start button.
+    /// </summary>
     private void OnClearQueue(object sender, EventArgs args)
     {
         queuedFiles.Clear();
         fileListStore.Clear();
+        _iterMap.Clear();
         startButton.Sensitive = false;
         UpdateStatus("Queue cleared");
         LogMessage("Queue cleared");
     }
 
+    /// <summary>
+    /// Opens a multi-select FileChooserDialog filtered to CBR files and adds selections to the queue,
+    /// skipping any paths already present.
+    /// </summary>
+    private void OnAddFiles(object sender, EventArgs args)
+    {
+        using (FileChooserDialog dialog = new FileChooserDialog(
+            "Add CBR Files",
+            this,
+            FileChooserAction.Open,
+            "Cancel", ResponseType.Cancel,
+            "Add", ResponseType.Accept))
+        {
+            dialog.SelectMultiple = true;
+
+            FileFilter cbrFilter = new FileFilter();
+            cbrFilter.Name = "CBR files";
+            cbrFilter.AddPattern("*.cbr");
+            dialog.AddFilter(cbrFilter);
+
+            FileFilter allFilter = new FileFilter();
+            allFilter.Name = "All files";
+            allFilter.AddPattern("*");
+            dialog.AddFilter(allFilter);
+
+            if (dialog.Run() == (int)ResponseType.Accept)
+            {
+                int addedCount = 0;
+                foreach (string filePath in dialog.Filenames)
+                {
+                    if (File.Exists(filePath) && filePath.EndsWith(".cbr", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!queuedFiles.Contains(filePath))
+                        {
+                            queuedFiles.Add(filePath);
+                            string filename = System.IO.Path.GetFileName(filePath);
+                            TreeIter iter = fileListStore.AppendValues(filename, filePath, "Queued");
+                            _iterMap[filePath] = iter;
+                            addedCount++;
+                        }
+                    }
+                }
+
+                if (addedCount > 0)
+                {
+                    startButton.Sensitive = true;
+                    UpdateStatus(queuedFiles.Count + " file(s) queued");
+                    LogMessage("Added " + addedCount + " file(s) to queue");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Begins parallel conversion of all queued files, showing the Cancel button and disabling Start.
+    /// </summary>
     private void OnStartConversion(object sender, EventArgs args)
     {
         startButton.Sensitive = false;
+        cancelButton.Show();
         deleteOriginalsButton.Sensitive = false;
         successfulConversions.Clear();
-        
+
         LogMessage("========================================");
         LogMessage("Starting conversion of " + queuedFiles.Count + " file(s) using " + maxThreads + " threads");
         LogMessage("========================================");
         UpdateStatus("Converting...");
 
         List<string> filesToConvert = new List<string>(queuedFiles);
-        
+        CancellationToken token = _cts.Token;
+
         Task.Run(() => {
             ParallelOptions options = new ParallelOptions();
             options.MaxDegreeOfParallelism = maxThreads;
-            
-            Parallel.ForEach(filesToConvert, options, (cbrPath) => {
-                ConvertCbrToCbz(cbrPath);
-            });
-            
-            // After all conversions complete
+            options.CancellationToken = token;
+
+            try
+            {
+                Parallel.ForEach(filesToConvert, options, (cbrPath) => {
+                    ConvertCbrToCbz(cbrPath, token);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                // User cancelled — wasCancelled flag is already set; OnConversionComplete handles cleanup
+            }
+
+            bool wasCancelled = token.IsCancellationRequested;
             Gtk.Application.Invoke(delegate {
-                OnConversionComplete();
+                OnConversionComplete(wasCancelled);
             });
         });
     }
 
-    private void OnConversionComplete()
+    /// <summary>
+    /// Signals the active conversion batch to stop at the next file boundary.
+    /// </summary>
+    private void OnCancel(object sender, EventArgs args)
     {
+        _cts.Cancel();
+    }
+
+    /// <summary>
+    /// Finalises the conversion run, logging results and restoring the UI to its idle state.
+    /// If cancellation was requested, logs the event and resets the CancellationTokenSource for reuse.
+    /// </summary>
+    private void OnConversionComplete(bool wasCancelled)
+    {
+        if (wasCancelled)
+        {
+            LogMessage("Conversion cancelled by user");
+            _cts = new CancellationTokenSource();
+        }
+
         LogMessage("========================================");
         LogMessage("Conversion complete: " + successfulConversions.Count + " of " + queuedFiles.Count + " files succeeded");
         LogMessage("========================================");
-        
-        UpdateStatus("Conversion complete - " + successfulConversions.Count + " successful");
-        
-        if (deleteOriginalCheckbox.Active && successfulConversions.Count > 0)
+
+        UpdateStatus(wasCancelled
+            ? "Conversion cancelled - " + successfulConversions.Count + " completed before cancel"
+            : "Conversion complete - " + successfulConversions.Count + " successful");
+
+        cancelButton.Hide();
+
+        if (!wasCancelled && deleteOriginalCheckbox.Active && successfulConversions.Count > 0)
         {
             // Auto-delete if checkbox was checked
             DeleteOriginalFiles();
@@ -240,20 +362,27 @@ public class CbrToCbzConverter : Window
         {
             deleteOriginalsButton.Sensitive = true;
         }
-        
+
         startButton.Sensitive = true;
     }
 
+    /// <summary>
+    /// Handles the "Delete Original Files Now" button click by delegating to DeleteOriginalFiles.
+    /// </summary>
     private void OnDeleteOriginals(object sender, EventArgs args)
     {
         DeleteOriginalFiles();
     }
 
+    /// <summary>
+    /// Moves all successfully converted source CBR files to the system trash via <c>gio trash</c>,
+    /// leaving them recoverable.
+    /// </summary>
     private void DeleteOriginalFiles()
     {
         int trashedCount = 0;
         LogMessage("Moving original files to trash...");
-        
+
         foreach (string cbrPath in successfulConversions)
         {
             try
@@ -289,12 +418,15 @@ public class CbrToCbzConverter : Window
                 LogMessage("ERROR moving to trash " + System.IO.Path.GetFileName(cbrPath) + ": " + ex.Message);
             }
         }
-        
+
         LogMessage("Moved " + trashedCount + " original file(s) to trash");
         LogMessage("You can restore them from trash using: gio trash --list && gio trash --restore <URI>");
         deleteOriginalsButton.Sensitive = false;
     }
 
+    /// <summary>
+    /// Detects the actual file format of <paramref name="filePath"/> using the system <c>file</c> command.
+    /// </summary>
     private string DetectFileFormat(string filePath)
     {
         try
@@ -320,6 +452,9 @@ public class CbrToCbzConverter : Window
         }
     }
 
+    /// <summary>
+    /// Returns the MIME type string of <paramref name="filePath"/> via the <c>file --mime-type</c> command.
+    /// </summary>
     private string GetFileMimeType(string filePath)
     {
         try
@@ -344,6 +479,10 @@ public class CbrToCbzConverter : Window
         }
     }
 
+    /// <summary>
+    /// Reads and returns the first 16 bytes of <paramref name="filePath"/> as a space-separated hex string
+    /// for archive format identification.
+    /// </summary>
     private string GetFileHexSignature(string filePath)
     {
         try
@@ -366,61 +505,69 @@ public class CbrToCbzConverter : Window
         }
     }
 
-private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extractError)
-{
-    LogMessage(threadId + " ===== FILE FORMAT ANALYSIS =====");
-    string fileType = DetectFileFormat(cbrPath);
-    string mimeType = GetFileMimeType(cbrPath);
-    string hexSignature = GetFileHexSignature(cbrPath);
-    FileInfo fi = new FileInfo(cbrPath);
-    
-    LogMessage(threadId + " File: " + System.IO.Path.GetFileName(cbrPath));
-    LogMessage(threadId + " Size: " + (fi.Length / 1024) + " KB");
-    LogMessage(threadId + " Detected Type: " + fileType);
-    LogMessage(threadId + " MIME Type: " + mimeType);
-    LogMessage(threadId + " Hex Signature: " + hexSignature);
-    
-    // Analyze the signature
-    if (hexSignature.StartsWith("00 00 00 00 00 00 00 00"))
+    /// <summary>
+    /// Logs a detailed file-format diagnostic report when all extraction methods fail,
+    /// interpreting the hex signature and extraction error to suggest a likely root cause.
+    /// </summary>
+    private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extractError)
     {
-        LogMessage(threadId + " Analysis: FILE IS COMPLETELY ZEROED - likely disk/download corruption");
-    }
-    else if (hexSignature.StartsWith("52 61 72 21 1A 07"))
-    {
-        LogMessage(threadId + " Analysis: Valid RAR signature but extraction failed");
-        if (extractError.Contains("password") || extractError.Contains("encrypted"))
-        {
-            LogMessage(threadId + " Reason: PASSWORD PROTECTED / ENCRYPTED");
-        }
-        else if (extractError.Contains("checksum") || extractError.Contains("CRC"))
-        {
-            LogMessage(threadId + " Reason: CRC/CHECKSUM ERRORS (file corruption)");
-        }
-        else
-        {
-            LogMessage(threadId + " Reason: Unknown - possibly corrupted header");
-        }
-    }
-    else if (hexSignature.StartsWith("50 4B 03 04"))
-    {
-        LogMessage(threadId + " Analysis: Valid ZIP signature but extraction failed");
-    }
-    
-    if (!string.IsNullOrEmpty(extractError))
-        LogMessage(threadId + " Extraction Error: " + extractError.Trim());
-    
-    LogMessage(threadId + " ");
-    LogMessage(threadId + " Common format signatures:");
-    LogMessage(threadId + "   RAR: 52 61 72 21 1A 07");
-    LogMessage(threadId + "   ZIP: 50 4B 03 04");
-    LogMessage(threadId + "   7z:  37 7A BC AF 27 1C");
-    LogMessage(threadId + " ");
-    LogMessage(threadId + " Suggestion: This file may be corrupted, encrypted,");
-    LogMessage(threadId + "             or have a non-standard wrapper.");
-    LogMessage(threadId + " Try re-downloading from original source");
-    LogMessage(threadId + " ================================");
-}
+        LogMessage(threadId + " ===== FILE FORMAT ANALYSIS =====");
+        string fileType = DetectFileFormat(cbrPath);
+        string mimeType = GetFileMimeType(cbrPath);
+        string hexSignature = GetFileHexSignature(cbrPath);
+        FileInfo fi = new FileInfo(cbrPath);
 
+        LogMessage(threadId + " File: " + System.IO.Path.GetFileName(cbrPath));
+        LogMessage(threadId + " Size: " + (fi.Length / 1024) + " KB");
+        LogMessage(threadId + " Detected Type: " + fileType);
+        LogMessage(threadId + " MIME Type: " + mimeType);
+        LogMessage(threadId + " Hex Signature: " + hexSignature);
+
+        // Analyze the signature
+        if (hexSignature.StartsWith("00 00 00 00 00 00 00 00"))
+        {
+            LogMessage(threadId + " Analysis: FILE IS COMPLETELY ZEROED - likely disk/download corruption");
+        }
+        else if (hexSignature.StartsWith("52 61 72 21 1A 07"))
+        {
+            LogMessage(threadId + " Analysis: Valid RAR signature but extraction failed");
+            if (extractError.Contains("password") || extractError.Contains("encrypted"))
+            {
+                LogMessage(threadId + " Reason: PASSWORD PROTECTED / ENCRYPTED");
+            }
+            else if (extractError.Contains("checksum") || extractError.Contains("CRC"))
+            {
+                LogMessage(threadId + " Reason: CRC/CHECKSUM ERRORS (file corruption)");
+            }
+            else
+            {
+                LogMessage(threadId + " Reason: Unknown - possibly corrupted header");
+            }
+        }
+        else if (hexSignature.StartsWith("50 4B 03 04"))
+        {
+            LogMessage(threadId + " Analysis: Valid ZIP signature but extraction failed");
+        }
+
+        if (!string.IsNullOrEmpty(extractError))
+            LogMessage(threadId + " Extraction Error: " + extractError.Trim());
+
+        LogMessage(threadId + " ");
+        LogMessage(threadId + " Common format signatures:");
+        LogMessage(threadId + "   RAR: 52 61 72 21 1A 07");
+        LogMessage(threadId + "   ZIP: 50 4B 03 04");
+        LogMessage(threadId + "   7z:  37 7A BC AF 27 1C");
+        LogMessage(threadId + " ");
+        LogMessage(threadId + " Suggestion: This file may be corrupted, encrypted,");
+        LogMessage(threadId + "             or have a non-standard wrapper.");
+        LogMessage(threadId + " Try re-downloading from original source");
+        LogMessage(threadId + " ================================");
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="fileName"/> is a system or metadata file that should be
+    /// excluded from archives (e.g. macOS AppleDouble files, Thumbs.db, desktop.ini).
+    /// </summary>
     private bool IsSystemFile(string fileName)
     {
         // Filter out system and metadata files
@@ -431,24 +578,27 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                fileName.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Counts non-system files in <paramref name="directory"/> recursively, returning -1 on error.
+    /// </summary>
     private int CountFilesInDirectory(string directory)
     {
         try
         {
             string[] allFiles = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
             int fileCount = 0;
-            
+
             foreach (string file in allFiles)
             {
                 string fileName = System.IO.Path.GetFileName(file);
-                
+
                 // Skip system files using shared filter method
                 if (!IsSystemFile(fileName))
                 {
                     fileCount++;
                 }
             }
-            
+
             return fileCount;
         }
         catch (Exception ex)
@@ -458,12 +608,16 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
         }
     }
 
+    /// <summary>
+    /// Counts non-system, non-directory entries inside a RAR or ZIP archive at <paramref name="archivePath"/>,
+    /// returning -1 on error.
+    /// </summary>
     private int CountFilesInArchive(string archivePath, bool isRar)
     {
         try
         {
             ProcessStartInfo psi = new ProcessStartInfo();
-            
+
             if (isRar)
             {
                 psi.FileName = "lsar";
@@ -474,7 +628,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                 psi.FileName = "unzip";
                 psi.Arguments = "-l \"" + archivePath + "\"";
             }
-            
+
             psi.UseShellExecute = false;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
@@ -489,18 +643,18 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                 string[] lines = output.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
                 int fileCount = 0;
                 bool inFileList = false;
-                
+
                 foreach (string line in lines)
                 {
                     string trimmed = line.Trim();
-                    
+
                     if (isRar)
                     {
                         // lsar output format - skip header lines
-                        if (trimmed.StartsWith("----") || trimmed.Contains("Archive:") || 
+                        if (trimmed.StartsWith("----") || trimmed.Contains("Archive:") ||
                             trimmed.Contains("Flags") || string.IsNullOrEmpty(trimmed))
                             continue;
-                        
+
                         // Lines with file entries have specific format
                         // Skip directory entries (end with /)
                         if (!trimmed.EndsWith("/") && trimmed.Length > 0)
@@ -531,7 +685,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                             inFileList = !inFileList;
                             continue;
                         }
-                        
+
                         if (inFileList && !string.IsNullOrEmpty(trimmed))
                         {
                             // Extract filename from end of line
@@ -539,7 +693,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                             if (parts.Length >= 4)
                             {
                                 string filename = parts[parts.Length - 1];
-                                
+
                                 // Skip directory entries and system files
                                 if (!filename.EndsWith("/") && !IsSystemFile(filename))
                                 {
@@ -549,7 +703,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                         }
                     }
                 }
-                
+
                 return fileCount;
             }
         }
@@ -557,21 +711,42 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
         {
             LogMessage("ERROR counting files in archive: " + ex.Message);
         }
-        
+
         return -1;
     }
 
-    private void ConvertCbrToCbz(string cbrPath)
+    /// <summary>
+    /// Updates the Status cell in the file list for the given path safely from any thread.
+    /// </summary>
+    private void SetFileStatus(string filePath, string status)
     {
+        Gtk.Application.Invoke(delegate {
+            if (_iterMap.ContainsKey(filePath))
+                fileListStore.SetValue(_iterMap[filePath], 2, status);
+        });
+    }
+
+    /// <summary>
+    /// Converts a single CBR file to CBZ format using parallel-safe extraction, page-count verification,
+    /// and cancellation support; updates the file's Status column throughout.
+    /// Skips the file without processing if <paramref name="token"/> is already cancelled.
+    /// </summary>
+    private void ConvertCbrToCbz(string cbrPath, CancellationToken token)
+    {
+        if (token.IsCancellationRequested)
+            return;
+
         string threadId = "[Thread " + Thread.CurrentThread.ManagedThreadId + "]";
-        
+
+        SetFileStatus(cbrPath, "Converting");
+
+        string fileName = System.IO.Path.GetFileNameWithoutExtension(cbrPath);
+        string directory = System.IO.Path.GetDirectoryName(cbrPath);
+        string tempDir = System.IO.Path.Combine(directory, fileName + "_temp_" + Guid.NewGuid().ToString("N").Substring(0, 8));
+        string cbzPath = System.IO.Path.Combine(directory, fileName + ".cbz");
+
         try
         {
-            string fileName = System.IO.Path.GetFileNameWithoutExtension(cbrPath);
-            string directory = System.IO.Path.GetDirectoryName(cbrPath);
-            string tempDir = System.IO.Path.Combine(directory, fileName + "_temp_" + Guid.NewGuid().ToString("N").Substring(0, 8));
-            string cbzPath = System.IO.Path.Combine(directory, fileName + ".cbz");
-
             LogMessage(threadId + " Processing: " + System.IO.Path.GetFileName(cbrPath));
 
             // Check file size - skip empty/placeholder files
@@ -579,6 +754,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
             if (fileInfo.Length < 1024)  // Less than 1KB
             {
                 LogMessage(threadId + " SKIPPED: File too small (" + fileInfo.Length + " bytes) - likely a failed download placeholder");
+                SetFileStatus(cbrPath, "Failed");
                 return;
             }
 
@@ -610,12 +786,12 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
             {
                 // Check if it's a RAR file
                 string mimeType = GetFileMimeType(cbrPath);
-                
+
                 if (mimeType.Contains("rar"))
                 {
                     // Try 2: unrar with lenient extraction (keep broken files)
                     LogMessage(threadId + " unar failed, trying unrar...");
-                    
+
                     try
                     {
                         ProcessStartInfo unrarInfo = new ProcessStartInfo();
@@ -629,7 +805,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                         Process unrarProcess = Process.Start(unrarInfo);
                         string unrarError = unrarProcess.StandardError.ReadToEnd();
                         unrarProcess.WaitForExit();
-                        
+
                         // Accept exit codes 0 (success), 1 (warning), 3 (CRC error but extracted)
                         if (unrarProcess.ExitCode == 0 || unrarProcess.ExitCode == 1 || unrarProcess.ExitCode == 3)
                         {
@@ -662,12 +838,12 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                         LogMessage(threadId + " unrar error: " + ex.Message);
                     }
                 }
-                
+
                 if (!extractSuccess)
                 {
                     // Try 3: 7z (good for many formats including RAR)
                     LogMessage(threadId + " trying 7z...");
-                    
+
                     try
                     {
                         ProcessStartInfo sevenzInfo = new ProcessStartInfo();
@@ -680,7 +856,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
 
                         Process sevenzProcess = Process.Start(sevenzInfo);
                         sevenzProcess.WaitForExit();
-                        
+
                         if (sevenzProcess.ExitCode == 0)
                         {
                             extractSuccess = true;
@@ -692,14 +868,14 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                         LogMessage(threadId + " 7z error: " + ex.Message);
                     }
                 }
-                
+
                 if (!extractSuccess)
                 {
                     // Try 4: unzip (for ZIP files)
                     if (mimeType.Contains("zip"))
                     {
                         LogMessage(threadId + " trying unzip...");
-                        
+
                         try
                         {
                             ProcessStartInfo unzipInfo = new ProcessStartInfo();
@@ -712,7 +888,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
 
                             Process unzipProcess = Process.Start(unzipInfo);
                             unzipProcess.WaitForExit();
-                            
+
                             if (unzipProcess.ExitCode == 0)
                             {
                                 extractSuccess = true;
@@ -732,6 +908,7 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
                 LogMessage(threadId + " ERROR: All extraction methods failed");
                 ShowFileFormatAnalysis(threadId, cbrPath, extractError);
                 Directory.Delete(tempDir, true);
+                SetFileStatus(cbrPath, "Failed");
                 return;
             }
 
@@ -748,14 +925,15 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
             // Count extracted files (excluding system files) from the working directory
             LogMessage(threadId + " Counting extracted pages...");
             int originalFileCount = CountFilesInDirectory(zipWorkingDir);
-            
+
             if (originalFileCount <= 0)
             {
                 LogMessage(threadId + " ERROR: No files found after extraction");
                 Directory.Delete(tempDir, true);
+                SetFileStatus(cbrPath, "Failed");
                 return;
             }
-            
+
             LogMessage(threadId + " Found " + originalFileCount + " page(s)");
 
             // Delete system files from working directory before zipping
@@ -794,18 +972,20 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
             {
                 LogMessage(threadId + " ERROR: Failed to create " + System.IO.Path.GetFileName(cbzPath));
                 Directory.Delete(tempDir, true);
+                SetFileStatus(cbrPath, "Failed");
                 return;
             }
 
             // Verify file count in CBZ
             LogMessage(threadId + " Verifying page count...");
             int newFileCount = CountFilesInArchive(cbzPath, false);
-            
+
             if (newFileCount != originalFileCount)
             {
                 LogMessage(threadId + " ERROR: Page count mismatch! Extracted " + originalFileCount + " pages but CBZ has " + newFileCount + " pages");
                 File.Delete(cbzPath);
                 Directory.Delete(tempDir, true);
+                SetFileStatus(cbrPath, "Failed");
                 return;
             }
 
@@ -813,7 +993,8 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
             Directory.Delete(tempDir, true);
 
             LogMessage(threadId + " SUCCESS: " + System.IO.Path.GetFileName(cbzPath) + " (verified " + newFileCount + " pages)");
-            
+
+            SetFileStatus(cbrPath, "Done");
             lock(successfulConversions)
             {
                 successfulConversions.Add(cbrPath);
@@ -822,9 +1003,15 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
         catch (Exception ex)
         {
             LogMessage(threadId + " ERROR: " + ex.Message);
+            SetFileStatus(cbrPath, "Failed");
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
         }
     }
 
+    /// <summary>
+    /// Updates the status bar label text on the GTK main thread.
+    /// </summary>
     private void UpdateStatus(string message)
     {
         Gtk.Application.Invoke(delegate {
@@ -832,24 +1019,33 @@ private void ShowFileFormatAnalysis(string threadId, string cbrPath, string extr
         });
     }
 
+    /// <summary>
+    /// Appends a timestamped message to the conversion log and auto-scrolls to the bottom.
+    /// </summary>
     private void LogMessage(string message)
     {
         Gtk.Application.Invoke(delegate {
             string timestamp = DateTime.Now.ToString("HH:mm:ss");
             TextIter iter = logBuffer.EndIter;
             logBuffer.Insert(ref iter, "[" + timestamp + "] " + message + "\n");
-            
+
             // Auto-scroll to bottom
             TextMark endMark = logBuffer.CreateMark(null, logBuffer.EndIter, false);
             logTextView.ScrollToMark(endMark, 0.0, true, 0.0, 1.0);
         });
     }
 
+    /// <summary>
+    /// Handles the window close event by terminating the GTK application loop.
+    /// </summary>
     private void OnDeleteEvent(object sender, DeleteEventArgs args)
     {
         Application.Quit();
     }
 
+    /// <summary>
+    /// Application entry point: initialises GTK, creates the main window, and starts the event loop.
+    /// </summary>
     public static void Main()
     {
         Application.Init();
