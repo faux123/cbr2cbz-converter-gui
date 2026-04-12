@@ -9,7 +9,7 @@ Drag CBR files onto the window, click **Start**, and the tool converts them in p
 ## Dependencies
 
 ```
-sudo apt install mono-complete gtk-sharp3 unar unrar zip
+sudo apt install mono-complete gtk-sharp3 unar unrar p7zip-full zip
 ```
 
 > On Fedora/RHEL: `dnf install mono-complete gtk-sharp3 unar unrar zip`
@@ -33,9 +33,10 @@ mono cbr2cbz.exe
 
 ## Supported input formats
 
-| Extension | Archive type |
-|-----------|-------------|
-| .cbr      | RAR (validated via hex signature `52 61 72 21 1A 07`) |
+| Extension | Archive type | Notes |
+|-----------|-------------|-------|
+| .cbr      | RAR          | Primary path; validated via hex signature `52 61 72 21 1A 07` |
+| .cbr      | ZIP          | Supported via the four-tool extraction chain: `unar` → `unrar` → `7z` → `unzip` |
 
 Extracted images are re-packed as ZIP and saved as .cbz alongside the original. The original is moved to the system trash (recoverable via `gio trash`) only after successful page-count verification.
 
@@ -53,7 +54,7 @@ Each file in the queue shows one of:
 ## Known limitations
 
 - Linux only (requires Mono runtime)
-- Input must be RAR-based CBR files; non-RAR CBRs are rejected after hex-signature check
+- Both RAR-based and ZIP-based CBR files are supported via the `unar` → `unrar` → `7z` → `unzip` fallback chain
 - No built-in viewer — opens CBZ with your default file manager
 
 ## License

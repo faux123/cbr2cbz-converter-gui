@@ -193,7 +193,7 @@ public class CbrToCbzConverter : Window
             // URL decode
             cleanUri = Uri.UnescapeDataString(cleanUri);
 
-            if (File.Exists(cleanUri) && cleanUri.ToLower().EndsWith(".cbr"))
+            if (File.Exists(cleanUri) && cleanUri.EndsWith(".cbr", StringComparison.OrdinalIgnoreCase))
             {
                 if (!queuedFiles.Contains(cleanUri))
                 {
@@ -259,7 +259,7 @@ public class CbrToCbzConverter : Window
                 int addedCount = 0;
                 foreach (string filePath in dialog.Filenames)
                 {
-                    if (File.Exists(filePath) && filePath.ToLower().EndsWith(".cbr"))
+                    if (File.Exists(filePath) && filePath.EndsWith(".cbr", StringComparison.OrdinalIgnoreCase))
                     {
                         if (!queuedFiles.Contains(filePath))
                         {
@@ -303,6 +303,7 @@ public class CbrToCbzConverter : Window
         Task.Run(() => {
             ParallelOptions options = new ParallelOptions();
             options.MaxDegreeOfParallelism = maxThreads;
+            options.CancellationToken = token;
 
             Parallel.ForEach(filesToConvert, options, (cbrPath) => {
                 ConvertCbrToCbz(cbrPath, token);
