@@ -305,9 +305,16 @@ public class CbrToCbzConverter : Window
             options.MaxDegreeOfParallelism = maxThreads;
             options.CancellationToken = token;
 
-            Parallel.ForEach(filesToConvert, options, (cbrPath) => {
-                ConvertCbrToCbz(cbrPath, token);
-            });
+            try
+            {
+                Parallel.ForEach(filesToConvert, options, (cbrPath) => {
+                    ConvertCbrToCbz(cbrPath, token);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                // User cancelled — wasCancelled flag is already set; OnConversionComplete handles cleanup
+            }
 
             bool wasCancelled = token.IsCancellationRequested;
             Gtk.Application.Invoke(delegate {
