@@ -8,50 +8,65 @@
 
   <Window.Styles>
 
+    <!-- Primary: solid blue — must target ContentPresenter for background,
+         FluentTheme ignores Background set on Button directly -->
     <Style Selector="Button.primary">
-      <Setter Property="Background"   Value="#2563EB"/>
-      <Setter Property="Foreground"   Value="White"/>
+      <Setter Property="Foreground"      Value="White"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="CornerRadius" Value="5"/>
-      <Setter Property="Padding"      Value="18,8"/>
-      <Setter Property="FontWeight"   Value="Medium"/>
-      <Setter Property="Cursor"       Value="Hand"/>
+      <Setter Property="CornerRadius"    Value="5"/>
+      <Setter Property="Padding"         Value="18,8"/>
+      <Setter Property="FontWeight"      Value="Medium"/>
+    </Style>
+    <Style Selector="Button.primary /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2563EB"/>
     </Style>
     <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#1D4ED8"/>
     </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1E40AF"/>
+    </Style>
+    <Style Selector="Button.primary:disabled">
+      <Setter Property="Foreground" Value="#1D4ED8"/>
+    </Style>
     <Style Selector="Button.primary:disabled /template/ ContentPresenter">
-      <Setter Property="Background" Value="#93C5FD"/>
-      <Setter Property="TextElement.Foreground" Value="White"/>
+      <Setter Property="Background" Value="#BFDBFE"/>
     </Style>
 
+    <!-- Secondary: white background, gray border -->
     <Style Selector="Button.secondary">
-      <Setter Property="Background"      Value="White"/>
       <Setter Property="Foreground"      Value="#374151"/>
       <Setter Property="BorderBrush"     Value="#D1D5DB"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius"    Value="5"/>
       <Setter Property="Padding"         Value="18,8"/>
-      <Setter Property="Cursor"          Value="Hand"/>
+    </Style>
+    <Style Selector="Button.secondary /template/ ContentPresenter">
+      <Setter Property="Background" Value="White"/>
     </Style>
     <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#F9FAFB"/>
+      <Setter Property="Background" Value="#F3F4F6"/>
     </Style>
 
+    <!-- Danger: white with red text/border -->
     <Style Selector="Button.danger">
-      <Setter Property="Background"      Value="White"/>
       <Setter Property="Foreground"      Value="#DC2626"/>
       <Setter Property="BorderBrush"     Value="#FCA5A5"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius"    Value="5"/>
       <Setter Property="Padding"         Value="18,8"/>
-      <Setter Property="Cursor"          Value="Hand"/>
+    </Style>
+    <Style Selector="Button.danger /template/ ContentPresenter">
+      <Setter Property="Background" Value="White"/>
     </Style>
     <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="#FEF2F2"/>
     </Style>
+    <Style Selector="Button.danger:disabled">
+      <Setter Property="Foreground" Value="#FCA5A5"/>
+    </Style>
     <Style Selector="Button.danger:disabled /template/ ContentPresenter">
-      <Setter Property="TextElement.Foreground" Value="#FCA5A5"/>
+      <Setter Property="Background" Value="#FFF1F2"/>
     </Style>
 
   </Window.Styles>
@@ -182,8 +197,8 @@
                 BorderBrush="#E5E7EB" BorderThickness="0,0,0,1"
                 Padding="12,6">
           <TextBlock Text="Log"
-                     FontSize="11" FontWeight="SemiBold"
-                     Foreground="#6B7280"/>
+                     FontSize="12" FontWeight="SemiBold"
+                     Foreground="#4B5563"/>
         </Border>
         <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
           <TextBox x:Name="LogTextBox"

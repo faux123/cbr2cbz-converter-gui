@@ -43,18 +43,21 @@ public partial class MainWindow : Window
 
     private void OnDragEnter(object? sender, DragEventArgs e)
     {
-        DropZone.Background = Avalonia.Media.Brush.Parse("#F5E4C0");
+        DropZone.Background = Avalonia.Media.Brush.Parse("#EFF6FF");
+        DropZone.BorderBrush = Avalonia.Media.Brush.Parse("#2563EB");
         e.Handled = true;
     }
 
     private void OnDragLeave(object? sender, RoutedEventArgs e)
     {
-        DropZone.Background = Avalonia.Media.Brush.Parse("#FDF3E3");
+        DropZone.Background = Avalonia.Media.Brush.Parse("White");
+        DropZone.BorderBrush = Avalonia.Media.Brush.Parse("#D1D5DB");
     }
 
     private void OnDrop(object? sender, DragEventArgs e)
     {
-        DropZone.Background = Avalonia.Media.Brush.Parse("#FDF3E3");
+        DropZone.Background = Avalonia.Media.Brush.Parse("White");
+        DropZone.BorderBrush = Avalonia.Media.Brush.Parse("#D1D5DB");
         var files = e.Data.GetFiles();
         if (files is null) return;
 
