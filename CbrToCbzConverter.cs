@@ -31,9 +31,32 @@ public class CbrToCbzConverter : Window
 
     public CbrToCbzConverter() : base("CBR to CBZ Converter")
     {
-        SetDefaultSize(700, 600);
+        SetDefaultSize(760, 640);
+        SetSizeRequest(580, 480);
         SetPosition(WindowPosition.Center);
         DeleteEvent += OnDeleteEvent;
+
+        // Visual polish: custom CSS for color identity, drop zone affordance, status colors
+        var css = new Gtk.CssProvider();
+        css.LoadFromData(@"
+            window { background-color: #FAFAF9; }
+            .drop-zone {
+                border: 2px dashed #C8821A;
+                border-radius: 6px;
+                background-color: #FDF3E3;
+            }
+            .drop-zone:hover {
+                background-color: #F5E4C0;
+                border-color: #A06815;
+            }
+            .log-view {
+                font-family: monospace;
+                font-size: 11px;
+                color: #555555;
+            }
+        ");
+        Gtk.StyleContext.AddProviderForScreen(
+            Gdk.Screen.Default, css, Gtk.StyleProviderPriority.Application);
 
         queuedFiles = new List<string>();
         successfulConversions = new List<string>();
@@ -45,10 +68,13 @@ public class CbrToCbzConverter : Window
         VBox vbox = new VBox(false, 10);
         vbox.BorderWidth = 15;
 
-        // Title label
+        // Title label — display size, amber accent on "CBZ"
         Label titleLabel = new Label();
-        titleLabel.Markup = "<span size='large' weight='bold'>CBR to CBZ Converter</span>";
-        vbox.PackStart(titleLabel, false, false, 5);
+        titleLabel.Markup = "<span size='xx-large' weight='bold' foreground='#1A1A1A'>CBR to </span>" +
+                            "<span size='xx-large' weight='bold' foreground='#C8821A'>CBZ</span>" +
+                            "<span size='xx-large' weight='bold' foreground='#1A1A1A'> Converter</span>";
+        titleLabel.Xalign = 0;
+        vbox.PackStart(titleLabel, false, false, 4);
 
         // Info label
         Label infoLabel = new Label("Using " + maxThreads + " threads for parallel processing");
@@ -59,12 +85,16 @@ public class CbrToCbzConverter : Window
         Frame dropFrame = new Frame("Drop CBR Files Here");
         EventBox dropZone = new EventBox();
 
-        Label dropLabel = new Label("Drag and drop .cbr files here");
-        dropLabel.MarginTop = 40;
-        dropLabel.MarginBottom = 40;
+        Label dropLabel = new Label();
+        dropLabel.Markup = "<span size='large' foreground='#C8821A' weight='semibold'>\u2B07  Drop .cbr files here</span>\n" +
+                           "<span size='small' foreground='#888888'>or use the Add Files\u2026 button below</span>";
+        dropLabel.Justify = Justification.Center;
+        dropLabel.MarginTop = 30;
+        dropLabel.MarginBottom = 30;
         dropLabel.MarginStart = 20;
         dropLabel.MarginEnd = 20;
         dropZone.Add(dropLabel);
+        dropZone.StyleContext.AddClass("drop-zone");
         dropFrame.Add(dropZone);
 
         // Setup drag and drop
@@ -107,7 +137,22 @@ public class CbrToCbzConverter : Window
         statusColumn.Title = "Status";
         CellRendererText statusCell = new CellRendererText();
         statusColumn.PackStart(statusCell, true);
-        statusColumn.AddAttribute(statusCell, "text", 2);
+        // Color-code status: amber=Converting, green=Done, red=Failed
+        statusColumn.SetCellDataFunc(statusCell, (col, cell, model, iter) => {
+            string status = (string)model.GetValue(iter, 2) ?? "";
+            var tc = (CellRendererText)cell;
+            tc.Text = status;
+            switch (status) {
+                case "Converting":
+                    tc.Foreground = "#C8821A"; tc.Weight = 700; break;
+                case "Done":
+                    tc.Foreground = "#22A85A"; tc.Weight = 700; break;
+                case "Failed":
+                    tc.Foreground = "#D63030"; tc.Weight = 700; break;
+                default:
+                    tc.ForegroundSet = false; tc.Weight = 400; break;
+            }
+        });
         fileTreeView.AppendColumn(statusColumn);
 
         fileScrolledWindow.Add(fileTreeView);
@@ -161,6 +206,7 @@ public class CbrToCbzConverter : Window
         logTextView = new TextView();
         logTextView.Editable = false;
         logTextView.WrapMode = WrapMode.Word;
+        logTextView.StyleContext.AddClass("log-view");
         logBuffer = logTextView.Buffer;
         scrolledWindow.Add(logTextView);
         logFrame.Add(scrolledWindow);
