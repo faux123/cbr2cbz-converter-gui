@@ -1,84 +1,78 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:CbrToCbz"
         x:Class="CbrToCbz.MainWindow"
         Title="CBR to CBZ Converter"
-        Width="800" Height="680"
-        MinWidth="600" MinHeight="500"
-        Background="#FAFAF9"
-        FontFamily="Inter,Segoe UI,Ubuntu,sans-serif">
+        Width="820" Height="660"
+        MinWidth="600" MinHeight="480">
 
   <Window.Styles>
+
+    <!-- Primary action button — uses system accent -->
     <Style Selector="Button.primary">
-      <Setter Property="Background" Value="#C8821A"/>
-      <Setter Property="Foreground" Value="White"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="CornerRadius" Value="5"/>
-      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Theme" Value="{StaticResource AccentButtonTheme}"/>
+      <Setter Property="Padding" Value="16,7"/>
     </Style>
-    <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#A06815"/>
-    </Style>
+
+    <!-- Secondary outlined button -->
     <Style Selector="Button.secondary">
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="#E1E1E0"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="5"/>
-      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Padding" Value="16,7"/>
     </Style>
-    <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
-      <Setter Property="Background" Value="#F0EFEE"/>
-    </Style>
+
+    <!-- Destructive action button -->
     <Style Selector="Button.danger">
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderBrush" Value="#D63030"/>
+      <Setter Property="Foreground" Value="#C42B2B"/>
+      <Setter Property="BorderBrush" Value="#C42B2B"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Foreground" Value="#D63030"/>
-      <Setter Property="CornerRadius" Value="5"/>
-      <Setter Property="Padding" Value="14,8"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="16,7"/>
+      <Setter Property="CornerRadius" Value="4"/>
     </Style>
+    <Style Selector="Button.danger:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#FFF0F0"/>
+    </Style>
+
   </Window.Styles>
 
-  <DockPanel Margin="20">
+  <DockPanel Margin="16">
 
     <!-- Header -->
-    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-      <TextBlock FontSize="28" FontWeight="Bold">
-        <Run Text="CBR to " Foreground="#1A1A1A"/>
-        <Run Text="CBZ" Foreground="#C8821A"/>
-        <Run Text=" Converter" Foreground="#1A1A1A"/>
-      </TextBlock>
+    <StackPanel DockPanel.Dock="Top" Margin="0,4,0,14">
+      <TextBlock Text="CBR → CBZ Converter"
+                 FontSize="22" FontWeight="SemiBold"/>
       <TextBlock x:Name="ThreadInfoLabel"
-                 FontSize="13" Foreground="#888"
+                 FontSize="12" Opacity="0.55"
                  Margin="0,3,0,0"/>
     </StackPanel>
 
     <!-- Drop Zone -->
     <Border x:Name="DropZone"
             DockPanel.Dock="Top"
-            BorderBrush="#C8821A" BorderThickness="2"
-            CornerRadius="6" Background="#FDF3E3"
-            Padding="20,22" Margin="0,0,0,12"
+            BorderBrush="#B0B8C8" BorderThickness="2"
+            CornerRadius="6"
+            Padding="0,20" Margin="0,0,0,10"
             Cursor="Hand">
-      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-        <TextBlock Text="⬇  Drop .cbr files here"
-                   FontSize="16" FontWeight="SemiBold"
-                   Foreground="#C8821A"
+      <Border.Styles>
+        <Style Selector="Border#DropZone">
+          <Setter Property="Background" Value="#F6F8FB"/>
+        </Style>
+      </Border.Styles>
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
+        <TextBlock Text="Drop .cbr files here"
+                   FontSize="14" FontWeight="Medium"
                    HorizontalAlignment="Center"/>
-        <TextBlock Text="or use the Add Files… button below"
-                   FontSize="12" Foreground="#999"
-                   HorizontalAlignment="Center"
-                   Margin="0,5,0,0"/>
+        <TextBlock Text="or use Add Files below"
+                   FontSize="12" Opacity="0.5"
+                   HorizontalAlignment="Center"/>
       </StackPanel>
     </Border>
 
     <!-- Action Buttons -->
     <StackPanel DockPanel.Dock="Top"
                 Orientation="Horizontal"
-                Spacing="8" Margin="0,0,0,12">
+                Spacing="6" Margin="0,0,0,10">
       <Button x:Name="StartButton"
               Classes="primary"
-              Content="Start Conversion"
+              Content="Convert"
               IsEnabled="False"
               Click="OnStartConversion"/>
       <Button x:Name="AddFilesButton"
@@ -87,7 +81,7 @@
               Click="OnAddFiles"/>
       <Button x:Name="ClearButton"
               Classes="secondary"
-              Content="Clear Queue"
+              Content="Clear"
               Click="OnClearQueue"/>
       <Button x:Name="CancelButton"
               Classes="danger"
@@ -98,11 +92,10 @@
 
     <!-- File Queue -->
     <Border DockPanel.Dock="Top"
-            BorderBrush="#E1E1E0" BorderThickness="1"
-            CornerRadius="6" Margin="0,0,0,10"
-            Height="170" ClipToBounds="True">
+            BorderBrush="#DCDCDC" BorderThickness="1"
+            CornerRadius="5" Margin="0,0,0,8"
+            Height="165" ClipToBounds="True">
       <DataGrid x:Name="FileGrid"
-                Background="White"
                 GridLinesVisibility="Horizontal"
                 CanUserResizeColumns="True"
                 CanUserSortColumns="False"
@@ -111,8 +104,8 @@
                 BorderThickness="0">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Filename"  Binding="{Binding Filename}"  Width="*"/>
-          <DataGridTextColumn Header="Full Path" Binding="{Binding FullPath}"  Width="2*"/>
-          <DataGridTemplateColumn Header="Status" Width="110">
+          <DataGridTextColumn Header="Path"      Binding="{Binding FullPath}"  Width="2*"/>
+          <DataGridTemplateColumn Header="Status" Width="100">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Status}"
@@ -127,52 +120,58 @@
       </DataGrid>
     </Border>
 
-    <!-- Delete Options -->
+    <!-- Options row -->
     <StackPanel DockPanel.Dock="Top"
                 Orientation="Horizontal"
-                Spacing="12" Margin="0,0,0,10">
+                Spacing="12" Margin="0,0,0,8">
       <CheckBox x:Name="DeleteOriginalCheckbox"
-                Content="Delete original CBR files after successful conversion"
-                FontSize="13"/>
+                Content="Delete originals after conversion"
+                VerticalAlignment="Center"/>
       <Button x:Name="DeleteOriginalsButton"
               Classes="danger"
-              Content="Delete Originals Now"
+              Content="Delete Originals"
               IsEnabled="False"
               Click="OnDeleteOriginals"/>
     </StackPanel>
 
-    <!-- Status Bar -->
+    <!-- Status strip -->
     <Border DockPanel.Dock="Top"
-            Background="#F0EFEE"
-            CornerRadius="4" Padding="10,6"
-            Margin="0,0,0,10">
+            CornerRadius="4" Padding="10,5"
+            Margin="0,0,0,8">
+      <Border.Styles>
+        <Style Selector="Border">
+          <Setter Property="Background" Value="#F0F2F5"/>
+        </Style>
+      </Border.Styles>
       <TextBlock x:Name="StatusLabel"
                  Text="Ready — drop files or click Add Files…"
-                 FontSize="13" Foreground="#555"/>
+                 FontSize="12" Opacity="0.7"/>
     </Border>
 
-    <!-- Conversion Log -->
-    <Border BorderBrush="#E1E1E0" BorderThickness="1"
-            CornerRadius="6" ClipToBounds="True">
+    <!-- Log -->
+    <Border BorderBrush="#DCDCDC" BorderThickness="1"
+            CornerRadius="5" ClipToBounds="True">
       <DockPanel>
         <Border DockPanel.Dock="Top"
-                Background="#F5F4F3"
-                BorderBrush="#E1E1E0" BorderThickness="0,0,0,1"
-                Padding="10,6">
-          <TextBlock Text="Conversion Log"
-                     FontSize="12" FontWeight="SemiBold"
-                     Foreground="#666"/>
+                BorderBrush="#DCDCDC" BorderThickness="0,0,0,1"
+                Padding="10,5">
+          <Border.Styles>
+            <Style Selector="Border">
+              <Setter Property="Background" Value="#F5F5F5"/>
+            </Style>
+          </Border.Styles>
+          <TextBlock Text="Log"
+                     FontSize="11" FontWeight="SemiBold"
+                     Opacity="0.6"/>
         </Border>
         <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto">
           <TextBox x:Name="LogTextBox"
                    IsReadOnly="True"
                    AcceptsReturn="True"
                    TextWrapping="Wrap"
-                   Background="White"
                    BorderThickness="0"
-                   FontFamily="monospace"
+                   FontFamily="Cascadia Code,Consolas,monospace"
                    FontSize="11"
-                   Foreground="#555"
                    Padding="10,8"/>
         </ScrollViewer>
       </DockPanel>

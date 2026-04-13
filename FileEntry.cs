@@ -24,10 +24,10 @@ public class FileEntry : INotifyPropertyChanged
 
     public IBrush StatusColor => _status switch
     {
-        "Converting" => new SolidColorBrush(Color.Parse("#C8821A")),
-        "Done"       => new SolidColorBrush(Color.Parse("#22A85A")),
-        "Failed"     => new SolidColorBrush(Color.Parse("#D63030")),
-        _            => new SolidColorBrush(Color.Parse("#888888")),
+        "Converting" => new SolidColorBrush(Color.Parse("#2563EB")),
+        "Done"       => new SolidColorBrush(Color.Parse("#16A34A")),
+        "Failed"     => new SolidColorBrush(Color.Parse("#DC2626")),
+        _            => new SolidColorBrush(Color.Parse("#9CA3AF")),
     };
 
     public FontWeight StatusWeight => _status is "Converting" or "Done" or "Failed"
