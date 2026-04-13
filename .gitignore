@@ -52,3 +52,11 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Release tarballs and dist staging
+dist/
+*.tar.gz
+
+# Legacy Mono artifacts
+*.exe
+*.exe.mdb

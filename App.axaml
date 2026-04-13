@@ -1,0 +1,18 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CbrToCbz.App">
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+  <Application.Resources>
+    <ResourceDictionary>
+      <Color x:Key="AmberAccent">#C8821A</Color>
+      <Color x:Key="AmberLight">#FDF3E3</Color>
+      <Color x:Key="Surface">#FAFAF9</Color>
+      <Color x:Key="NearBlack">#1A1A1A</Color>
+      <Color x:Key="StatusConverting">#C8821A</Color>
+      <Color x:Key="StatusDone">#22A85A</Color>
+      <Color x:Key="StatusFailed">#D63030</Color>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

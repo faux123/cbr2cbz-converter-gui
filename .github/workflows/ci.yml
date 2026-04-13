@@ -8,36 +8,32 @@ on:
 
 jobs:
   build:
-    name: Build (Mono / GTK-sharp3)
+    name: Build (.NET 8 / Avalonia)
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          # gtk-sharp3 was dropped from Ubuntu 22.04+ default repos — use Mono official APT repo
-          sudo apt-get update -qq
-          sudo apt-get install -y ca-certificates gnupg
-          sudo gpg --homedir /tmp --no-default-keyring --keyring /usr/share/keyrings/mono-official.gpg \
-            --keyserver hkp://keyserver.ubuntu.com:80 \
-            --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
-          echo "deb [signed-by=/usr/share/keyrings/mono-official.gpg] https://download.mono-project.com/repo/ubuntu stable-focal main" \
-            | sudo tee /etc/apt/sources.list.d/mono-official.list
-          sudo apt-get update -qq
-          sudo apt-get install -y mono-complete gtk-sharp3
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
-      - name: Compile
-        run: make build
+      - name: Restore dependencies
+        run: dotnet restore
 
-      - name: Verify binary
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Verify output
         run: |
-          test -f cbr2cbz.exe && echo "Build successful: cbr2cbz.exe" || (echo "Build failed" && exit 1)
-          mono --version
+          test -f bin/Release/net8.0/cbr2cbz.dll \
+            && echo "Build successful" \
+            || (echo "Build failed — expected bin/Release/net8.0/cbr2cbz.dll" && exit 1)
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cbr2cbz-exe
-          path: cbr2cbz.exe
+          name: cbr2cbz-dll
+          path: bin/Release/net8.0/
           retention-days: 7

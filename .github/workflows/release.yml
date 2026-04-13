@@ -22,19 +22,12 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ca-certificates gnupg
-          sudo gpg --homedir /tmp --no-default-keyring --keyring /usr/share/keyrings/mono-official.gpg \
-            --keyserver hkp://keyserver.ubuntu.com:80 \
-            --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
-          echo "deb [signed-by=/usr/share/keyrings/mono-official.gpg] https://download.mono-project.com/repo/ubuntu stable-focal main" \
-            | sudo tee /etc/apt/sources.list.d/mono-official.list
-          sudo apt-get update -qq
-          sudo apt-get install -y mono-complete gtk-sharp3
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
-      - name: Build release dist
+      - name: Build release tarball
         run: make dist VERSION=${{ steps.version.outputs.version }}
 
       - name: Generate changelog
@@ -63,13 +56,13 @@ jobs:
 
           ## Installation
 
-          1. Install dependencies:
+          1. Install runtime dependencies:
              \`\`\`bash
-             sudo apt install mono-complete gtk-sharp3 unar unrar p7zip-full zip
+             sudo apt install unar unrar p7zip-full zip
              \`\`\`
-          2. Download and extract the tarball below
-          3. Run: \`./cbr2cbz\` (wrapper script) or \`mono cbr2cbz.exe\`
+          2. Download \`cbr2cbz-${{ steps.version.outputs.version }}-linux.tar.gz\` and extract
+          3. Run: \`./cbr2cbz\`
 
-          **Requires**: Linux + Mono runtime. Tested on Ubuntu/Fedora." \
+          **Self-contained** — no .NET runtime required.  Tested on Ubuntu 22.04+." \
             --latest \
             "cbr2cbz-${{ steps.version.outputs.version }}-linux.tar.gz"
