@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y mono-complete gtk-sharp3
+
+      - name: Build release dist
+        run: make dist VERSION=${{ steps.version.outputs.version }}
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGES=$(git log --pretty=format:"- %s (%h)" --no-merges | head -20)
+          fi
+          echo "changes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "cbr2cbz-converter-gui ${{ github.ref_name }}" \
+            --notes "## Changes
+
+          ${{ steps.changelog.outputs.changes }}
+
+          ## Installation
+
+          1. Install dependencies:
+             \`\`\`bash
+             sudo apt install mono-complete gtk-sharp3 unar unrar p7zip-full zip
+             \`\`\`
+          2. Download and extract the tarball below
+          3. Run: \`./cbr2cbz\` (wrapper script) or \`mono cbr2cbz.exe\`
+
+          **Requires**: Linux + Mono runtime. Tested on Ubuntu/Fedora." \
+            --latest \
+            "cbr2cbz-${{ steps.version.outputs.version }}-linux.tar.gz"
