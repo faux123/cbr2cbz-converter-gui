@@ -55,8 +55,9 @@ public class CbrToCbzConverter : Window
                 color: #555555;
             }
         ");
+        // Priority 600 = GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
         Gtk.StyleContext.AddProviderForScreen(
-            Gdk.Screen.Default, css, Gtk.StyleProviderPriority.Application);
+            Gdk.Screen.Default, css, 600);
 
         queuedFiles = new List<string>();
         successfulConversions = new List<string>();
@@ -86,7 +87,7 @@ public class CbrToCbzConverter : Window
         EventBox dropZone = new EventBox();
 
         Label dropLabel = new Label();
-        dropLabel.Markup = "<span size='large' foreground='#C8821A' weight='semibold'>\u2B07  Drop .cbr files here</span>\n" +
+        dropLabel.Markup = "<span size='large' foreground='#C8821A' weight='bold'>\u2B07  Drop .cbr files here</span>\n" +
                            "<span size='small' foreground='#888888'>or use the Add Files\u2026 button below</span>";
         dropLabel.Justify = Justification.Center;
         dropLabel.MarginTop = 30;
